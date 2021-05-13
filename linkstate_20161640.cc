@@ -78,9 +78,12 @@ void dijkstra(FILE *fp) {
 				int next_node = network[cur_node][j].first;
 				int next_dist = network[cur_node][j].second;
 
-				if(nd[st_node].dist[next_node] > dist+next_dist) {
+				if(nd[st_node].dist[next_node] >= dist+next_dist) {
+					if(nd[st_node].dist[next_node] == dist+next_dist) {
+						nd[next_node].from[st_node] = min(nd[next_node].from[st_node], cur_node);
+						continue;
+					}
 					nd[st_node].dist[next_node] = dist+next_dist;
-					//nd[next_node].dist[st_node] = dist+next_dist;
 					nd[next_node].from[st_node] = cur_node;
 					pq.push(make_pair(-nd[st_node].dist[next_node], next_node));
 				}
@@ -90,14 +93,11 @@ void dijkstra(FILE *fp) {
 
     for(int i = 0; i<node_num; i++) {
 		for(int j = 0; j<node_num; j++)	{
-			printf("%d ", nd[i].dist[j]);
 			if(nd[i].dist[j] == INF) continue;
 			fprintf(fp, "%d %d %d\n", j, nd[i].from[j], nd[i].dist[j]);
 		}
-		printf("\n");
 		fprintf(fp,"\n");	
 	}
-	printf("\n");
 	return;
 
 }
@@ -163,10 +163,6 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(!flag2) network[end_node].push_back(make_pair(st_node, real_dist));
-		for(int i = 0; i<network[3].size(); i++) {
-			printf("%d %d      ", network[3][i].first, network[3][i].second);
-		}
-		printf("\n");
 		dijkstra(outputfp);
 		message_run(outputfp, msgfp);
 		fclose(msgfp);
