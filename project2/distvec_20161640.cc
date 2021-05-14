@@ -4,11 +4,10 @@
 #include <errno.h>
 #include <string.h>
 #include <vector>
-#include <queue>
 
 #define INF 987654321
 using namespace std;
-vector<pair<int, int> > network[101];
+int network[101][101];
 int node_num;
 struct node{
 	int dist[101];
@@ -53,45 +52,38 @@ void message_run(FILE *fp, FILE *msgfp) {
 
 }
 
-void dijkstra(FILE *fp) {
+void bellman_ford(FILE *fp) {
+	int update_cnt = 0;
 	for(int i = 0; i<node_num; i++) {
 		for(int j = 0; j<node_num; j++) {
-            if(i == j) {
-				nd[i].dist[j] = 0;
-				nd[i].from[j] = i;
-				continue;
-			}
-            nd[i].dist[j] = INF;
-            nd[j].dist[i] = INF;
+			if(i == j) nd[i].dist[j] = 0, nd[i].from[j] = i;
+			else nd[i].dist[j] = INF;
 		}
 	}
-
-    for(int i = 0; i<node_num; i++) {
-        int st_node = i;
-        priority_queue<pair<int, int> > pq;
-        pq.push(make_pair(0, -st_node)); // 노드도 -로 넣는 이유는 id가 작은 노드부터 큐에서 나와야해서(tie breaking rule2)
-        while(!pq.empty()) {
-            int cur_node = -pq.top().second;
-            int dist = -pq.top().first;
-            pq.pop();
-			for(int j = 0; j<(int)network[cur_node].size(); j++) {
-				int next_node = network[cur_node][j].first;
-				int next_dist = network[cur_node][j].second;
-
-				if(nd[st_node].dist[next_node] >= dist+next_dist) {
-					if(nd[st_node].dist[next_node] == dist+next_dist) {
-						nd[next_node].from[st_node] = min(nd[next_node].from[st_node], cur_node);
-						continue;
+	do{
+		update_cnt = 0;
+		for(int i = 0; i<node_num; i++) {
+			for(int j = 0; j<node_num; j++) {
+				//if(network[j][j] >= INF) continue;
+				for(int k = 0; k<node_num; k++) {
+					if(nd[i].dist[j] >= network[i][k] + nd[k].dist[j]) {
+						if(nd[i].dist[j] == network[i][k] + nd[k].dist[j]) {
+							update_cnt--;
+							nd[i].from[j] = min(nd[i].from[j], k);
+						}
+						else {
+							nd[i].from[j] = k;
+						}
+						nd[i].dist[j] = network[i][k] + nd[k].dist[j];
+						//nd[i].from[j] = k;
+						update_cnt++;
 					}
-					nd[st_node].dist[next_node] = dist+next_dist;
-					nd[next_node].from[st_node] = cur_node;
-					pq.push(make_pair(-nd[st_node].dist[next_node], -next_node));
 				}
 			}
-        }
-    }
+		}
+	}while(update_cnt!=0);
 
-    for(int i = 0; i<node_num; i++) {
+	for(int i = 0; i<node_num; i++) {
 		for(int j = 0; j<node_num; j++)	{
 			if(nd[i].dist[j] == INF) continue;
 			fprintf(fp, "%d %d %d\n", j, nd[i].from[j], nd[i].dist[j]);
@@ -99,8 +91,8 @@ void dijkstra(FILE *fp) {
 		fprintf(fp,"\n");	
 	}
 	return;
-
 }
+
 
 int main(int argc, char *argv[]) {
 
@@ -109,66 +101,63 @@ int main(int argc, char *argv[]) {
 	int st_node, end_node, dist;
 	char changes[20];
 	if(argc != 4){
-		fprintf(stderr, "usage: linkstate topologyfile messagesfile changesfile\n");
+		fprintf(stderr, "usage: distvec topologyfile messagesfile changesfile\n");
 		exit(1);
 	}
 
 	if((tofofp = fopen(argv[1], "r")) == NULL) {
-		fprintf(stderr, "Error: open input file\n");
+		fprintf(stderr, "Error: open input file.\n");
 		exit(1);
 	}
 	if((msgfp = fopen(argv[2], "r")) == NULL) {
-		fprintf(stderr, "Error: open input file\n");
+		fprintf(stderr, "Error: open input file.\n");
 		exit(1);
 	}
 	if((chgfp = fopen(argv[3], "r")) == NULL) {
-		fprintf(stderr, "Error: open input file\n");
+		fprintf(stderr, "Error: open input file.\n");
 		exit(1);
 	}
-	if((outputfp = fopen("output_ls.txt", "w")) == NULL) {
-		fprintf(stderr, "Error: open input file\n");
+	if((outputfp = fopen("output_dv.txt", "w")) == NULL) {
+		fprintf(stderr, "Error: open input file.\n");
 		exit(1);
 	}
 
 	fscanf(tofofp, "%d", &node_num);
+	for(int i = 0; i<node_num; i++) {
+		for(int j = 0; j<node_num; j++) {
+			network[i][j] = INF;
+		}
+	}
 
 	while(feof(tofofp)==0){
-		fscanf(tofofp, "%d %d %d ", &st_node, &end_node, &dist);
-		network[st_node].push_back(make_pair(end_node, dist));
-		network[end_node].push_back(make_pair(st_node, dist));
+		fscanf(tofofp, "%d %d %d", &st_node, &end_node, &dist);
+		network[st_node][end_node] = dist;
+		network[end_node][st_node] = dist;
+		nd[st_node].dist[end_node] = dist;
+		nd[end_node].dist[st_node] = dist;
+		nd[st_node].from[end_node] = end_node;
+		nd[end_node].from[st_node] = st_node;
 	}
-	dijkstra(outputfp);
+	bellman_ford(outputfp);
 	message_run(outputfp, msgfp);
 	fclose(msgfp);
+
 	while(fgets(changes, sizeof(changes), chgfp) != NULL) {
-		bool flag1 = false, flag2 = false;
 		msgfp = fopen(argv[2], "r");
 		sscanf(changes, "%d %d %d", &st_node, &end_node, &dist);
 		int real_dist;
 		if(dist == -999) real_dist = INF;
 		else real_dist = dist;
-
-		for(int i = 0; i<(int)network[st_node].size(); i++) {
-			if(network[st_node][i].first == end_node) {
-				network[st_node][i].second = real_dist;
-				flag1 = true;
-			}
-		}
-		if(!flag1) network[st_node].push_back(make_pair(end_node, real_dist));
-		
-		for(int i = 0; i<(int)network[end_node].size(); i++) {
-			if(network[end_node][i].first == st_node) {
-				network[end_node][i].second = real_dist;
-				flag2 = true;
-			}
-		}
-		if(!flag2) network[end_node].push_back(make_pair(st_node, real_dist));
-		dijkstra(outputfp);
+		network[st_node][end_node] = real_dist;
+		network[end_node][st_node] = real_dist;
+		nd[st_node].dist[end_node] = real_dist;
+		nd[end_node].dist[st_node] = real_dist;
+		bellman_ford(outputfp);
 		message_run(outputfp, msgfp);
 		fclose(msgfp);
 	}
 	// format (dest, next. distance)
-	printf("Complete. Output file written to output_ls.txt.\n");
+	printf("Complete. Output file written to output_dv.txt.\n");
 	fclose(tofofp);
 	fclose(chgfp);
 	fclose(outputfp);
