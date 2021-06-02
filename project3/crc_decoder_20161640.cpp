@@ -38,13 +38,12 @@ char my_xor(char a, char b) {
     else return '1';
 }
 
-string calculate_encoded_data(string data, string generator) {
-    string origin  = data;
+bool calculate_remain(string data, string generator) {
+    string origin = data;
     string remainder;
     int idx = (int)(generator.length() - 1);
-    for(unsigned int i = 0; i< generator.length()-1; i++) origin.push_back('0');
     remainder = origin.substr(0, idx);
-    for(unsigned int i = 0; i<data.length(); i++) {
+    for(unsigned int i = 0; i<data.length() - generator.length() + 1; i++) {
         string temp;
         remainder.push_back(origin[idx++]);
         if(remainder[0] == '0') {
@@ -56,18 +55,21 @@ string calculate_encoded_data(string data, string generator) {
             remainder = temp;
         }
     }
-    return data + remainder;
+
+    for(int i = 0; i<(int)remainder.length(); i++) {
+        if(remainder[i] != '0') return false;
+    }
+
+    return true;
 }
 
 int main(int argc, char *argv[]) {
-
-    FILE *input_fp, *output_fp;
-    unsigned char store, size;
-    string data;
-    string generator;
-    string result,ans;
-    if(argc != 5) {
-        fprintf(stderr, "usage: ./crc_encoder input_file output_file generator dataword_size\n");
+    FILE *input_fp, *output_fp, *result_fp;
+    string generator, result, ori, ch[3], ans;
+    unsigned char zero_padding, st;
+    int size, cnt = 0, error_cnt = 0;
+    if(argc != 6) {
+        fprintf(stderr, "usage: ./crc_decoder input_file output_file result_file generator dataword_size\n");
         exit(1);
     }
 
@@ -81,37 +83,42 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    dataword_size = atoi(argv[4]);
+    if((result_fp = fopen(argv[3], "wb")) == NULL) {
+        fprintf(stderr, "result file open error.\n");
+        exit(1);
+    }
+
+    generator = argv[4];
+    dataword_size = atoi(argv[5]);
     if(dataword_size != 4 && dataword_size != 8) {
         fprintf(stderr, "dataword size must be 4 or 8.\n");
         exit(1);    
     }
-    
-    generator = argv[3];
-    store = fgetc(input_fp);
+
+    int len = dataword_size + (int)(generator.length()) - 1; // 7 , 8
+    zero_padding = fgetc(input_fp);
+    size = dataword_size == 4? 2*(int)(3+generator.length()) : 7+(int)generator.length(); // 14, 16
+
+    fread(&st, sizeof(unsigned char), 1, input_fp);
     while(feof(input_fp) == 0) {
-        data = oct_decimal_converter(store);
-        if(dataword_size == 4) {
-            string temp1 = calculate_encoded_data(data.substr(0, 4), generator);
-            string temp2 = calculate_encoded_data(data.substr(4, 4), generator);
-            result = temp1 + temp2;
-        }
-        else {
-            result = calculate_encoded_data(data, generator);
-        }
+        result = oct_decimal_converter(st);
         for(int i = 0; i<(int)result.length(); i++) ans.push_back(result[i]);
-        store = fgetc(input_fp);
+        fread(&st, sizeof(unsigned char), 1, input_fp);
     }
-
-    ans.length() % 8 != 0 ? size = int(8 - (ans.length()%8)) : 0;
-    fwrite(&size, sizeof(unsigned char), 1, output_fp);
-
-    for(int j = 0; j < size; j++) ans = '0' + ans;
-    for(int j = 0; j<(int)ans.length()/8; j++) {
-        unsigned char temp = binary_converter(ans.substr(8*j, 8));
-        fwrite(&temp, sizeof(unsigned char), 1, output_fp);
+    for(int j = 0; j < (int)(ans.length() - zero_padding) / size; j++) {
+        string s;
+        string temp = ans.substr(zero_padding + j*size, size);
+        for(int k = 0; k<size/len; k++) {
+            string ori = temp.substr(k*len, len);
+            cnt++;
+            if(!calculate_remain(ori, generator)) error_cnt++;
+            s = s + ori.substr(0, dataword_size);
+        }
+        fputc(binary_converter(s), output_fp);
     }
+    fprintf(result_fp, "%d %d", cnt, error_cnt);
     fclose(input_fp);
     fclose(output_fp);
+    fclose(result_fp);
     return 0;
 }
